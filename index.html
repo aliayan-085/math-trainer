@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Math Differentiator · Quadratic Equations</title>
+<style>
+:root{--c:#16a34a;--bg:#f4f6fb;--card:#fff;--ink:#1b2340;--mut:#5b6486;--bd:#dfe3f0}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+main{max-width:720px;margin:0 auto;padding:28px 16px 60px}
+h1{margin:0 0 4px;font-size:1.7rem}.sub{margin:0 0 20px;color:var(--mut)}
+.tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.tab{flex:1;min-width:140px;padding:11px;border-radius:12px;border:2px solid var(--bd);background:var(--card);font-weight:700;cursor:pointer;font-size:.95rem}
+.tab.on{border-color:var(--c);background:var(--c);color:#fff}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:18px;padding:20px;box-shadow:0 6px 24px rgba(30,40,90,.07)}
+#lvinfo{color:var(--mut);margin:0 0 14px;font-size:.93rem}
+button{font-family:inherit}
+.btn{background:var(--c);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer}
+.btn.g{background:transparent;color:var(--ink);border:1px solid var(--bd)}
+.btn:disabled{opacity:.5;cursor:default}
+.eq{font-size:1.8rem;font-weight:800;margin:18px 0 6px;min-height:2.2rem}
+.txt{white-space:pre-wrap;line-height:1.5;margin:6px 0 14px;min-height:1.5em}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+input{flex:1;min-width:160px;padding:10px 12px;border-radius:10px;border:1px solid var(--bd);font-size:1rem;font-family:inherit}
+#res{font-weight:700;min-height:1.4em}.ok{color:#16a34a}.no{color:#dc2626}
+.ai{white-space:pre-wrap;line-height:1.55;margin-top:12px;padding:12px 14px;border-radius:12px;background:#eef2ff;border-left:4px solid var(--c);min-height:1.5em;display:none}
+small{color:var(--mut)}
+</style></head><body>
+<main>
+<h1>AI Math Differentiator</h1>
+<p class="sub">One core topic, quadratic equations, adapted by AI to three difficulty levels.</p>
+<div class="tabs" id="tabs"></div>
+<section class="card">
+  <p id="lvinfo"></p>
+  <button class="btn" id="newBtn">New problem</button>
+  <div class="eq" id="eq"></div>
+  <p class="txt" id="story"></p>
+  <div class="row"><input id="ans" placeholder="Your answer"><button class="btn" id="chk" disabled>Check</button></div>
+  <small id="fmt"></small>
+  <div id="res"></div>
+  <div class="row"><button class="btn g" id="hint" disabled>Hint (0/3)</button><button class="btn g" id="sol" disabled>Show explanation</button></div>
+  <div class="ai" id="ai"></div>
+</section>
+</main>
+<script>
+// ---------- level settings ----------
+const LV = {
+  1: { name: 'Level 1 · Foundation', color: '#16a34a', info: 'Simple equation x² + bx + c = 0 with small integer roots. Step-by-step guidance and direct hints.', fmt: 'Enter both roots separated by a space, e.g.  2 -3' },
+  2: { name: 'Level 2 · Standard', color: '#2563eb', info: 'Grade-level equation ax² + bx + c = 0 with integer roots. Concise hints that name the method.', fmt: 'Enter both roots separated by a space, e.g.  2 -3' },
+  3: { name: 'Level 3 · Advanced', color: '#9333ea', info: 'A real-world word problem: you must build the equation yourself and reject roots that make no sense. Indirect, guiding hints.', fmt: 'Enter one number (the width in metres), e.g.  7' },
+};
+let level = 1, cur = null, hints = 0;
+const $ = (id) => document.getElementById(id);
+
+// ---------- math is generated and checked by CODE, never by the AI ----------
+const rnd = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const nz = (a, b) => { let v = 0; while (!v) v = rnd(a, b); return v; };
+function fmtEq(a, b, c) {
+  let s = (a === 1 ? '' : a === -1 ? '-' : a) + 'x²';
+  if (b) s += (b < 0 ? ' − ' : ' + ') + (Math.abs(b) === 1 ? '' : Math.abs(b)) + 'x';
+  if (c) s += (c < 0 ? ' − ' : ' + ') + Math.abs(c);
+  return s + ' = 0';
+}
+function makeTask(l) {
+  if (l === 1) {                     // x² + bx + c = 0, roots in [-5, 5]
+    const r1 = nz(-5, 5), r2 = nz(-5, 5);
+    return { type: 'eq', eq: fmtEq(1, -(r1 + r2), r1 * r2), ans: [r1, r2] };
+  }
+  if (l === 2) {                     // a(x - r1)(x - r2), a in 1..3
+    const a = rnd(1, 3), r1 = nz(-6, 6), r2 = nz(-6, 6);
+    return { type: 'eq', eq: fmtEq(a, -a * (r1 + r2), a * r1 * r2), ans: [r1, r2] };
+  }
+  const w = rnd(3, 12), d = rnd(1, 6), A = w * (w + d);   // width w, length w + d, area A
+  return { type: 'word', eq: `x² + ${d}x − ${A} = 0`, ans: [w], extra: { w, d, A } };
+}
+
+// ---------- talk to our own server function (it holds the API key) ----------
+async function ai(kind, more = {}) {
+  try {
+    const r = await fetch('/api/generate', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ level, kind, task: { type: cur.type, equation: cur.eq, answers: cur.ans, extra: cur.extra }, ...more }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    return j.text;
+  } catch (e) { return 'AI error: ' + e.message; }
+}
+const showAI = (t) => { const el = $('ai'); el.style.display = 'block'; el.textContent = t; };
+
+// ---------- UI ----------
+function setLevel(l) {
+  level = l; cur = null; hints = 0;
+  document.documentElement.style.setProperty('--c', LV[l].color);
+  [...$('tabs').children].forEach((b, i) => b.classList.toggle('on', i + 1 === l));
+  $('lvinfo').textContent = LV[l].info; $('fmt').textContent = LV[l].fmt;
+  $('eq').textContent = ''; $('story').textContent = ''; $('res').textContent = ''; $('ai').style.display = 'none';
+  $('ans').value = ''; ['chk', 'hint', 'sol'].forEach((id) => ($(id).disabled = true)); $('hint').textContent = 'Hint (0/3)';
+}
+[1, 2, 3].forEach((l) => {
+  const b = document.createElement('button'); b.className = 'tab'; b.textContent = LV[l].name; b.onclick = () => setLevel(l); $('tabs').append(b);
+});
+
+$('newBtn').onclick = async () => {
+  cur = makeTask(level); hints = 0;
+  $('res').textContent = ''; $('ai').style.display = 'none'; $('ans').value = ''; $('hint').textContent = 'Hint (0/3)';
+  $('eq').textContent = cur.type === 'eq' ? cur.eq : '';
+  $('story').textContent = 'Writing the problem…';
+  ['chk', 'hint', 'sol'].forEach((id) => ($(id).disabled = false));
+  let text = await ai('problem');
+  if (cur.type === 'word') {         // verify the AI used our numbers; otherwise fall back to a template
+    const { d, A } = cur.extra;
+    if (!text.includes(String(d)) || !text.includes(String(A)))
+      text = `A rectangular garden is ${d} m longer than it is wide. Its area is ${A} m². Find the width of the garden.`;
+  }
+  $('story').textContent = text;
+};
+
+function parseAnswer(s) {
+  return s.replace(/−/g, '-').replace(/[,;]/g, ' ').split(/\s+/).filter(Boolean).map(Number);
+}
+const uniq = (arr) => [...new Set(arr)].sort((x, y) => x - y);
+$('chk').onclick = async () => {
+  const given = parseAnswer($('ans').value);
+  const g = uniq(given), c = uniq(cur.ans);
+  const right = g.length === c.length && g.every((v, i) => Number.isFinite(v) && Math.abs(v - c[i]) < 1e-6);
+  const res = $('res');
+  if (right) { res.textContent = '✓ Correct!'; res.className = 'ok'; }
+  else {
+    res.textContent = '✗ Not quite. Check your answer.'; res.className = 'no';
+    showAI('Thinking…'); showAI(await ai('feedback', { student: $('ans').value }));
+  }
+};
+$('hint').onclick = async () => {
+  if (hints >= 3) return;
+  hints++; $('hint').textContent = `Hint (${hints}/3)`;
+  showAI('Thinking…'); showAI(await ai('hint', { hintNo: hints }));
+};
+$('sol').onclick = async () => { showAI('Thinking…'); showAI(await ai('explain')); };
+
+setLevel(1);
+</script>
+</body></html>
